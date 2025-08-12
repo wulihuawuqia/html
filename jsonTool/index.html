@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON比对工具</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-code-branch"></i> JSON比对工具</h1>
+            <p>比较两个JSON对象，显示所有字段的比对结果，支持过滤字段和重要字段标注</p>
+        </header>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="filterFields">过滤字段 (用逗号分隔):</label>
+                <input type="text" id="filterFields" placeholder="例如: id, timestamp, metadata">
+            </div>
+            
+            <div class="control-group">
+                <label for="importantFields">重要字段 (用逗号分隔):</label>
+                <input type="text" id="importantFields" placeholder="例如: name, email, status">
+            </div>
+
+            <div class="control-group">
+                <label>
+                    <input type="checkbox" id="ignoreCase" checked>
+                    忽略大小写
+                </label>
+                <label>
+                    <input type="checkbox" id="ignoreWhitespace" checked>
+                    忽略空白字符
+                </label>
+            </div>
+
+            <button id="compareBtn" class="btn-primary">
+                <i class="fas fa-search"></i> 开始比对
+            </button>
+        </div>
+
+        <div class="json-inputs">
+            <div class="json-panel">
+                <h3>JSON A</h3>
+                <textarea id="jsonA" placeholder="请输入第一个JSON对象..."></textarea>
+                <div class="panel-actions">
+                    <button class="btn-secondary" onclick="formatJSON('jsonA')">
+                        <i class="fas fa-indent"></i> 格式化
+                    </button>
+                    <button class="btn-secondary" onclick="clearJSON('jsonA')">
+                        <i class="fas fa-trash"></i> 清空
+                    </button>
+                </div>
+            </div>
+
+            <div class="json-panel">
+                <h3>JSON B</h3>
+                <textarea id="jsonB" placeholder="请输入第二个JSON对象..."></textarea>
+                <div class="panel-actions">
+                    <button class="btn-secondary" onclick="formatJSON('jsonB')">
+                        <i class="fas fa-indent"></i> 格式化
+                    </button>
+                    <button class="btn-secondary" onclick="clearJSON('jsonB')">
+                        <i class="fas fa-trash"></i> 清空
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="results" id="results" style="display: none; position: relative;">
+            <button class="fullscreen-btn" id="fullscreenToggle" title="全屏切换" style="position:absolute;top:10px;right:10px;z-index:2;">
+                <i class="fas fa-expand"></i>
+            </button>
+            <h3>比对结果</h3>
+            <div class="result-stats">
+                <div class="stat">
+                    <span class="stat-label">总字段数:</span>
+                    <span id="totalFields" class="stat-value">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">相同字段:</span>
+                    <span id="sameFields" class="stat-value same">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">不同字段:</span>
+                    <span id="diffFields" class="stat-value diff">0</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">缺失字段:</span>
+                    <span id="missingFields" class="stat-value missing">0</span>
+                </div>
+            </div>
+
+            <div class="result-tabs" style="position:relative;">
+                <button class="tab-btn active" data-tab="all">所有字段</button>
+                <button class="tab-btn" data-tab="diff">仅差异</button>
+                <button class="tab-btn" data-tab="same">仅相同</button>
+                <button class="tab-btn" data-tab="missing">仅缺失</button>
+                <button class="tab-fullscreen-btn" id="tabFullscreenToggle" title="全屏切换" style="position:absolute;top:8px;right:8px;z-index:2;">
+                    <i class="fas fa-expand"></i>
+                </button>
+                <button class="tab-fullscreen-return" id="tabFullscreenReturn" title="返回" style="position:absolute;top:8px;right:8px;z-index:3;display:none;">
+                    <i class="fas fa-arrow-left"></i> 返回
+                </button>
+            </div>
+
+            <div class="result-content">
+                <div id="diffResult" class="diff-result"></div>
+            </div>
+
+            <div class="export-actions">
+                <button class="btn-secondary" onclick="exportResults()">
+                    <i class="fas fa-download"></i> 导出结果
+                </button>
+                <button class="btn-secondary" onclick="copyResults()">
+                    <i class="fas fa-copy"></i> 复制结果
+                </button>
+            </div>
+        </div>
+
+        <div class="examples">
+            <h3>示例数据</h3>
+            <div class="example-buttons">
+                <button class="btn-example" onclick="loadExample('basic')">基础示例</button>
+                <button class="btn-example" onclick="loadExample('nested')">嵌套对象</button>
+                <button class="btn-example" onclick="loadExample('array')">数组对象</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js?v=1.5"></script>
+</body>
+</html> 
