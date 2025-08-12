@@ -1,725 +1,496 @@
-// 全局变量
-let currentResults = null;
-let currentFilter = 'all';
+// 直接复用根目录最新版脚本（含本地缓存与业务模型分区、Tab全屏、自动比对、防抖等）
+// 拷贝于 /Users/wuqia/html/script.js v2.1
 
-// 示例数据
-const examples = {
-    basic: {
-        jsonA: `{
-  "name": "张三",
-  "age": 25,
-  "email": "zhangsan@example.com",
-  "city": "北京",
-  "hobbies": ["读书", "游泳"]
-}`,
-        jsonB: `{
-  "name": "张三",
-  "age": 26,
-  "email": "zhangsan@example.com",
-  "city": "上海",
-  "hobbies": ["读书", "跑步"]
-}`
-    },
-    nested: {
-        jsonA: `{
-  "user": {
-    "id": 1,
-    "profile": {
-      "name": "李四",
-      "age": 30,
-      "address": {
-        "city": "广州",
-        "street": "天河路"
-      }
-    },
-    "settings": {
-      "theme": "dark",
-      "language": "zh-CN"
-    }
-  },
-  "metadata": {
-    "created": "2024-01-01",
-    "version": "1.0"
-  }
-}`,
-        jsonB: `{
-  "user": {
-    "id": 1,
-    "profile": {
-      "name": "李四",
-      "age": 30,
-      "address": {
-        "city": "深圳",
-        "street": "天河路"
-      }
-    },
-    "settings": {
-      "theme": "light",
-      "language": "zh-CN"
-    }
-  },
-  "metadata": {
-    "created": "2024-01-01",
-    "version": "1.1"
-  }
-}`
-    },
-    array: {
-        jsonA: `{
-  "products": [
-    {
-      "id": 1,
-      "name": "手机",
-      "price": 2999,
-      "category": "电子产品"
-    },
-    {
-      "id": 2,
-      "name": "笔记本",
-      "price": 5999,
-      "category": "电子产品"
-    }
-  ],
-  "total": 2,
-  "timestamp": "2024-01-01T10:00:00Z"
-}`,
-        jsonB: `{
-  "products": [
-    {
-      "id": 1,
-      "name": "手机",
-      "price": 2999,
-      "category": "电子产品"
-    },
-    {
-      "id": 3,
-      "name": "平板",
-      "price": 3999,
-      "category": "电子产品"
-    }
-  ],
-  "total": 2,
-  "timestamp": "2024-01-01T10:00:00Z"
-}`
-    }
+// 本地存储键
+const STORAGE_KEYS = {
+  filter: 'jsonDiff_filterFields',
+  important: 'jsonDiff_importantFields',
+  models: 'jsonDiff_modelsConfig',
+  flags: 'jsonDiff_flags',
+  layout: 'jsonDiff_layoutConfig',
+  fontSize: 'jsonDiff_fontSize'
 };
 
-// 防抖函数
-function debounce(fn, delay) {
-    let timer = null;
-    return function(...args) {
-        clearTimeout(timer);
-        timer = setTimeout(() => fn.apply(this, args), delay);
-    };
-}
+let currentResults = null; // 比对后的扁平结果（保持顺序）
+let currentFilter = 'all';
+let currentModels = {}; // { 模型名: [前缀路径, ...] }
+let currentLayout = { gridType: 'auto', sectionOrder: [], sectionSizes: {} }; // 布局设置
+let currentFontSize = 12; // 当前字体大小
 
-// 页面加载完成后初始化
-document.addEventListener('DOMContentLoaded', function() {
+// 工具：localStorage
+function saveToStorage(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {} }
+function loadFromStorage(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; } }
+
+// 初始化
+document.addEventListener('DOMContentLoaded', () => {
+  hydrateFromStorage();
     initializeEventListeners();
-    loadExample('basic');
-    // 自动比对防抖
-    const debouncedCompare = debounce(compareJSON, 400);
-    document.getElementById('jsonA').addEventListener('input', debouncedCompare);
-    document.getElementById('jsonB').addEventListener('input', debouncedCompare);
-    // Tab内容全屏切换
-    const resultTabs = document.querySelector('.result-tabs');
-    const resultContent = document.querySelector('.result-content');
-    const tabFullscreenBtn = document.getElementById('tabFullscreenToggle');
-    const tabFullscreenReturn = document.getElementById('tabFullscreenReturn');
-    // 兜底：初始隐藏返回按钮
-    if (tabFullscreenReturn) tabFullscreenReturn.style.display = 'none';
-    let isTabFullscreen = false;
-    function enterTabFullscreen() {
-        isTabFullscreen = true;
-        resultContent.classList.add('tab-fullscreen-mode');
-        document.body.classList.add('tab-fullscreen-active');
-        tabFullscreenBtn.style.display = 'none';
-        tabFullscreenReturn.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
-    }
-    function exitTabFullscreen() {
-        isTabFullscreen = false;
-        resultContent.classList.remove('tab-fullscreen-mode');
-        document.body.classList.remove('tab-fullscreen-active');
-        tabFullscreenBtn.style.display = '';
-        tabFullscreenReturn.style.display = 'none';
-        document.body.style.overflow = '';
-    }
-    tabFullscreenBtn.addEventListener('click', enterTabFullscreen);
-    tabFullscreenReturn.addEventListener('click', exitTabFullscreen);
-    // ESC退出Tab全屏
-    document.addEventListener('keydown', function(e) {
-        if (isTabFullscreen && (e.key === 'Escape' || e.key === 'Esc')) {
-            exitTabFullscreen();
-        }
-    });
+  loadExampleData(); // 加载示例数据
 });
 
-// 初始化事件监听器
-function initializeEventListeners() {
-    // 比对按钮
-    document.getElementById('compareBtn').addEventListener('click', compareJSON);
-    
-    // 标签页切换
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            switchTab(this.dataset.tab);
-        });
-    });
-    
-    // 回车键触发比对
-    document.getElementById('jsonA').addEventListener('keydown', function(e) {
-        if (e.ctrlKey && e.key === 'Enter') {
-            compareJSON();
-        }
-    });
-    
-    document.getElementById('jsonB').addEventListener('keydown', function(e) {
-        if (e.ctrlKey && e.key === 'Enter') {
-            compareJSON();
-        }
-    });
+function hydrateFromStorage() {
+  const filter = loadFromStorage(STORAGE_KEYS.filter, '');
+  const important = loadFromStorage(STORAGE_KEYS.important, '');
+  const flags = loadFromStorage(STORAGE_KEYS.flags, { ignoreCase: false, ignoreWhitespace: false });
+  const models = loadFromStorage(STORAGE_KEYS.models, {});
+  const layout = loadFromStorage(STORAGE_KEYS.layout, { gridType: 'auto', sectionOrder: [], sectionSizes: {} });
+
+  const filterEl = document.getElementById('filterFields');
+  const importantEl = document.getElementById('importantFields');
+  const ignoreCaseEl = document.getElementById('ignoreCase');
+  const ignoreWhitespaceEl = document.getElementById('ignoreWhitespace');
+  if (filterEl) filterEl.value = filter;
+  if (importantEl) importantEl.value = important;
+  if (ignoreCaseEl) ignoreCaseEl.checked = !!flags.ignoreCase;
+  if (ignoreWhitespaceEl) ignoreWhitespaceEl.checked = !!flags.ignoreWhitespace;
+  currentModels = models || {};
+  currentLayout = layout || { gridType: 'auto', sectionOrder: [], sectionSizes: {} };
+  currentFontSize = loadFromStorage(STORAGE_KEYS.fontSize, 12);
+  
+  // 初始渲染模型列表
+  if (typeof renderModelsList === 'function') {
+    try { renderModelsList(); } catch(_){}
+  }
+  
+  // 更新字体大小显示
+  updateFontSizeDisplay();
 }
 
-// 加载示例数据
-function loadExample(type) {
-    if (examples[type]) {
-        document.getElementById('jsonA').value = examples[type].jsonA;
-        document.getElementById('jsonB').value = examples[type].jsonB;
-        formatJSON('jsonA');
-        formatJSON('jsonB');
+function persistControlsToStorage() {
+  saveToStorage(STORAGE_KEYS.filter, (document.getElementById('filterFields')?.value || ''));
+  saveToStorage(STORAGE_KEYS.important, (document.getElementById('importantFields')?.value || ''));
+  saveToStorage(STORAGE_KEYS.flags, {
+    ignoreCase: !!document.getElementById('ignoreCase')?.checked,
+    ignoreWhitespace: !!document.getElementById('ignoreWhitespace')?.checked
+  });
+}
+
+// 解析模型：支持JSON对象或“模型名: 路径1, 路径2”
+function parseModels(inputText) {
+  let text = (inputText || '').trim();
+  if (!text) return {};
+  // 归一化常见全角符号与空白
+  text = text
+    .replace(/\uFEFF/g, '')            // 去BOM
+    .replace(/[\u3000\t]+/g, ' ')     // 全角空格/制表符
+    .replace(/[：]/g, ':')             // 全角冒号
+    .replace(/[，]/g, ',');            // 全角逗号
+  try {
+    const obj = JSON.parse(text);
+    const normalized = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (Array.isArray(v)) normalized[k] = v.map(s => String(s).trim()).filter(Boolean);
+      else if (typeof v === 'string') normalized[k] = v.split(',').map(s => s.trim()).filter(Boolean);
     }
-}
-
-// 格式化JSON
-function formatJSON(textareaId) {
-    const textarea = document.getElementById(textareaId);
-    try {
-        const json = JSON.parse(textarea.value);
-        textarea.value = JSON.stringify(json, null, 2);
-    } catch (e) {
-        showNotification('JSON格式错误，无法格式化', 'error');
-    }
-}
-
-// 清空JSON
-function clearJSON(textareaId) {
-    document.getElementById(textareaId).value = '';
-}
-
-// 只对字符串值做大小写处理，不处理key
-function normalizeCaseValueOnly(obj) {
-    if (typeof obj === 'string') {
-        return obj.toLowerCase();
-    } else if (Array.isArray(obj)) {
-        return obj.map(normalizeCaseValueOnly);
-    } else if (obj && typeof obj === 'object') {
+    return normalized;
+  } catch (_e) {
         const result = {};
-        for (const [key, value] of Object.entries(obj)) {
-            result[key] = normalizeCaseValueOnly(value);
-        }
+    text.split(/\n+/).forEach(line => {
+      const raw = line.trim();
+      if (!raw || raw.startsWith('#') || raw.startsWith('//')) return; // 忽略空行与注释
+      const seg = line.split(':');
+      if (seg.length >= 2) {
+        const name = seg[0].trim();
+        const rest = seg.slice(1).join(':');
+        const paths = rest.split(',').map(s => s.trim()).filter(Boolean);
+        if (name && paths.length) result[name] = paths;
+      }
+    });
         return result;
     }
-    return obj;
+}
+function serializeModels(models) { try { return JSON.stringify(models, null, 2); } catch (e) { return ''; } }
+
+// 事件
+function initializeEventListeners() {
+  const compareBtn = document.getElementById('compareBtn');
+  if (compareBtn) {
+    // 双绑定，确保点击可触发
+    compareBtn.addEventListener('click', compareJSON);
+    compareBtn.onclick = compareJSON;
+  }
+  // 暴露到全局，便于应急调用
+  window.compareJSON = compareJSON;
+  document.querySelectorAll('.tab-btn').forEach(btn => btn.addEventListener('click', function() { switchTab(this.dataset.tab); }));
+  // 新增模型按钮
+  document.getElementById('addModelBtn')?.addEventListener('click', () => openModelModal());
+  document.getElementById('resetModels')?.addEventListener('click', () => {
+    currentModels = {};
+    saveToStorage(STORAGE_KEYS.models, currentModels);
+    renderModelsList();
+    showNotification('模型设置已重置', 'success');
+    if (currentResults) renderResults(currentResults, currentFilter);
+  });
+  // 弹窗交互
+  document.getElementById('modalClose')?.addEventListener('click', closeModelModal);
+  document.getElementById('modalCancel')?.addEventListener('click', closeModelModal);
+  document.getElementById('modalSave')?.addEventListener('click', saveModelFromModal);
+  // 自动比对（防抖）
+  const debounced = debounce(compareJSON, 400);
+  document.getElementById('jsonA')?.addEventListener('input', debounced);
+  document.getElementById('jsonB')?.addEventListener('input', debounced);
+  // Tab 全屏
+  setupTabFullscreen();
 }
 
-// 解析JSON字符串（不修改任何值或字段名）
-function parseJSON(jsonString, ignoreCase = false, ignoreWhitespace = false) {
-    try {
-        const processedString = jsonString.trim();
-        const parsed = JSON.parse(processedString);
-        // 忽略大小写/空白仅在比较时生效，这里不改动数据
-        return parsed;
-    } catch (e) {
-        throw new Error(`JSON解析错误: ${e.message}`);
+// 渲染模型列表
+function renderModelsList(){
+  const listEl = document.getElementById('modelsList');
+  if (!listEl) return;
+  const entries = Object.entries(currentModels);
+  if (entries.length===0){ 
+    listEl.innerHTML = '<div style="color:#666;padding:8px;">暂无模型，点击"新增模型"创建</div>'; 
+    return; 
+  }
+  listEl.innerHTML = entries.map(([name, paths], idx)=>{
+    const pathsText = Array.isArray(paths)? paths.join(', ') : '';
+    return `<div class="model-item" data-index="${idx}">
+      <div class="model-info">
+        <div class="model-name">${escapeHtml(name)}</div>
+        <div class="model-paths">${escapeHtml(pathsText)}</div>
+      </div>
+      <div class="model-actions">
+        <button class="btn-icon" onclick="openModelModal(${idx})"><i class=\"fas fa-pen\"></i> 编辑</button>
+        <button class="btn-icon" onclick="deleteModel(${idx})"><i class=\"fas fa-trash\"></i> 删除</button>
+        <button class="btn-icon" onclick="moveModel(${idx}, -1)"><i class=\"fas fa-arrow-up\"></i></button>
+        <button class="btn-icon" onclick="moveModel(${idx}, 1)"><i class=\"fas fa-arrow-down\"></i></button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// 弹窗逻辑
+function openModelModal(index){
+  const modal = document.getElementById('modelModal');
+  if (!modal) return;
+  const title = document.getElementById('modalTitle');
+  const nameEl = document.getElementById('modalModelName');
+  const pathsEl = document.getElementById('modalModelPaths');
+  modal.dataset.index = (index===undefined||index===null) ? '' : String(index);
+  if (index===undefined || index===null){
+    title.textContent = '新增模型';
+    nameEl.value = '';
+    pathsEl.value = '';
+  } else {
+    const entries = Object.entries(currentModels);
+    const [name, paths] = entries[index] || ['', []];
+    title.textContent = '编辑模型';
+    nameEl.value = name;
+    pathsEl.value = Array.isArray(paths) ? paths.join('\n') : '';
+  }
+  modal.style.display = 'flex';
+}
+function closeModelModal(){
+  const modal = document.getElementById('modelModal');
+  if (modal) modal.style.display = 'none';
+}
+function saveModelFromModal(){
+  const modal = document.getElementById('modelModal');
+  if (!modal) return;
+  const indexStr = modal.dataset.index;
+  const name = (document.getElementById('modalModelName')?.value || '').trim();
+  const raw = (document.getElementById('modalModelPaths')?.value || '');
+  const paths = raw.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean);
+  if (!name){ showNotification('请输入模型名称','error'); return; }
+  if (!paths.length){ showNotification('请至少输入一个路径前缀','error'); return; }
+  const entries = Object.entries(currentModels);
+  if (indexStr){
+    const idx = Number(indexStr);
+    const [oldName] = entries[idx] || [''];
+    if (name===oldName){ currentModels[name] = paths; }
+    else {
+      const newObj={};
+      entries.forEach(([k,v], i)=>{
+        if (i===idx) newObj[name]=paths; else newObj[k]=v;
+      });
+      currentModels = newObj;
     }
-}
-
-// 获取过滤字段列表
-function getFilterFields() {
-    const filterInput = document.getElementById('filterFields').value;
-    return filterInput.split(',').map(field => field.trim()).filter(field => field);
-}
-
-// 获取重要字段列表
-function getImportantFields() {
-    const importantInput = document.getElementById('importantFields').value;
-    return importantInput.split(',').map(field => field.trim()).filter(field => field);
-}
-
-// 检查字段是否应该被过滤
-function shouldFilterField(path, filterFields) {
-    if (filterFields.length === 0) return false;
-    
-    return filterFields.some(filterField => {
-        const pathParts = path.split('.');
-        return pathParts.some(part => part.toLowerCase() === filterField.toLowerCase());
-    });
-}
-
-// 检查字段是否重要
-function isImportantField(path, importantFields) {
-    if (importantFields.length === 0) return false;
-    
-    return importantFields.some(importantField => {
-        const pathParts = path.split('.');
-        return pathParts.some(part => part.toLowerCase() === importantField.toLowerCase());
-    });
-}
-
-// 比较两个值
-function compareValues(valueA, valueB) {
-    if (typeof valueA !== typeof valueB) {
-        return false;
-    }
-    
-    if (valueA === null && valueB === null) {
-        return true;
-    }
-    
-    if (valueA === null || valueB === null) {
-        return false;
-    }
-    
-    if (typeof valueA === 'object') {
-        if (Array.isArray(valueA) !== Array.isArray(valueB)) {
-            return false;
-        }
-        
-        if (Array.isArray(valueA)) {
-            if (valueA.length !== valueB.length) {
-                return false;
-            }
-            return valueA.every((item, index) => compareValues(item, valueB[index]));
-        }
-        
-        const keysA = Object.keys(valueA);
-        const keysB = Object.keys(valueB);
-        
-        if (keysA.length !== keysB.length) {
-            return false;
-        }
-        
-        return keysA.every(key => compareValues(valueA[key], valueB[key]));
-    }
-    
-    return valueA === valueB;
-}
-
-// 递归比较对象
-function compareObjects(objA, objB, path = '', filterFields = [], importantFields = []) {
-    const results = [];
-    
-    // 获取所有唯一键
-    const allKeys = new Set([...Object.keys(objA), ...Object.keys(objB)]);
-    
-    for (const key of allKeys) {
-        const currentPath = path ? `${path}.${key}` : key;
-        
-        // 检查是否应该过滤此字段
-        if (shouldFilterField(currentPath, filterFields)) {
-            continue;
-        }
-        
-        const valueA = objA[key];
-        const valueB = objB[key];
-        const isImportant = isImportantField(currentPath, importantFields);
-        
-        // 检查字段是否存在
-        const existsInA = key in objA;
-        const existsInB = key in objB;
-        
-        if (!existsInA) {
-            results.push({
-                path: currentPath,
-                type: 'missing',
-                valueA: undefined,
-                valueB: valueB,
-                important: isImportant
-            });
-        } else if (!existsInB) {
-            results.push({
-                path: currentPath,
-                type: 'missing',
-                valueA: valueA,
-                valueB: undefined,
-                important: isImportant
-            });
-        } else {
-            // 比较值
-            if (typeof valueA === 'object' && valueA !== null && 
-                typeof valueB === 'object' && valueB !== null &&
-                !Array.isArray(valueA) && !Array.isArray(valueB)) {
-                // 递归比较嵌套对象
-                const nestedResults = compareObjects(valueA, valueB, currentPath, filterFields, importantFields);
-                results.push(...nestedResults);
             } else {
-                const isSame = compareValues(valueA, valueB);
-                results.push({
-                    path: currentPath,
-                    type: isSame ? 'same' : 'diff',
-                    valueA: valueA,
-                    valueB: valueB,
-                    important: isImportant
-                });
-            }
-        }
-    }
-    
-    return results;
+    currentModels[name] = paths;
+  }
+  saveToStorage(STORAGE_KEYS.models, currentModels);
+  renderModelsList();
+  closeModelModal();
+  showNotification('模型已保存','success');
+  if (currentResults) renderResults(currentResults, currentFilter);
+}
+function deleteModel(index){
+  const entries = Object.entries(currentModels);
+  if (index<0 || index>=entries.length) return;
+  const newObj={}; entries.forEach(([k,v],i)=>{ if (i!==index) newObj[k]=v; });
+  currentModels = newObj;
+  saveToStorage(STORAGE_KEYS.models, currentModels);
+  renderModelsList();
+  showNotification('模型已删除','success');
+  if (currentResults) renderResults(currentResults, currentFilter);
+}
+function moveModel(index, delta){
+  const entries = Object.entries(currentModels);
+  const to = index + delta; if (to<0 || to>=entries.length) return;
+  const [moved] = entries.splice(index,1);
+  entries.splice(to,0,moved);
+  const newObj={}; entries.forEach(([k,v])=> newObj[k]=v);
+  currentModels = newObj;
+  saveToStorage(STORAGE_KEYS.models, currentModels);
+  renderModelsList();
+  if (currentResults) renderResults(currentResults, currentFilter);
 }
 
-// 获取对象的所有字段路径（包括嵌套字段）
-function getAllFieldPaths(obj, path = '') {
-    const paths = [];
-    
-    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-        for (const [key, value] of Object.entries(obj)) {
-            const currentPath = path ? `${path}.${key}` : key;
-            
-            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                // 递归获取嵌套对象的字段路径
-                const nestedPaths = getAllFieldPaths(value, currentPath);
-                paths.push(...nestedPaths);
-            } else {
-                paths.push(currentPath);
-            }
-        }
-    }
-    
-    return paths;
+function debounce(fn, delay) { let t = null; return (...args) => { clearTimeout(t); t = setTimeout(() => fn.apply(null, args), delay); }; }
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`[data-tab="${tab}"]`)?.classList.add('active');
+  currentFilter = tab;
+  if (currentResults) renderResults(currentResults, tab);
 }
 
-// 获取所有字段路径及原始字段名链路
-function getAllFieldPathsWithOrigin(obj, pathArr = [], pathStr = '') {
-    const paths = [];
-    if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-        for (const [key, value] of Object.entries(obj)) {
-            const newPathArr = [...pathArr, key];
-            const newPathStr = newPathArr.join('.');
-            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                const nestedPaths = getAllFieldPathsWithOrigin(value, newPathArr, newPathStr);
-                paths.push(...nestedPaths);
-            } else {
-                paths.push({
-                    pathArr: newPathArr,
-                    pathStr: newPathStr
-                });
-            }
-        }
-    }
-    return paths;
-}
-
-// 获取字段值（支持嵌套路径，pathArr为原始字段名数组）
-function getFieldValueByArr(obj, pathArr) {
-    let current = obj;
-    for (const key of pathArr) {
-        if (current && typeof current === 'object' && key in current) {
-            current = current[key];
-        } else {
-            return undefined;
-        }
-    }
-    return current;
-}
-
-// 主比对函数
+// 比对（不改变字段顺序和值的大小写/空白）
 function compareJSON() {
-    console.log('开始比对 - 保留原始字段名和值 v1.5');
-    const jsonAString = document.getElementById('jsonA').value.trim();
-    const jsonBString = document.getElementById('jsonB').value.trim();
-    if (!jsonAString || !jsonBString) {
-        showNotification('请输入两个JSON对象', 'error');
-        return;
-    }
-    const ignoreCase = document.getElementById('ignoreCase').checked;
-    const ignoreWhitespace = document.getElementById('ignoreWhitespace').checked;
+  const jsonAString = (document.getElementById('jsonA')?.value || '').trim();
+  const jsonBString = (document.getElementById('jsonB')?.value || '').trim();
+  if (!jsonAString || !jsonBString) { showNotification('请输入两个JSON对象', 'error'); return; }
+
+  persistControlsToStorage();
+
+  const ignoreCase = !!document.getElementById('ignoreCase')?.checked;
+  const ignoreWhitespace = !!document.getElementById('ignoreWhitespace')?.checked;
     const filterFields = getFilterFields();
     const importantFields = getImportantFields();
-    // 字符串比较归一化，仅用于比较，不改变显示值
+
     const normalizeForCompare = (s) => {
         let r = s;
         if (ignoreWhitespace) r = r.replace(/\s+/g, '');
         if (ignoreCase) r = r.toLowerCase();
         return r;
     };
-    try {
-        // 显示加载状态
-        const compareBtn = document.getElementById('compareBtn');
-        const originalText = compareBtn.innerHTML;
-        compareBtn.innerHTML = '<div class="loading"></div> 比对中...';
-        compareBtn.disabled = true;
-        // 解析JSON（不改变大小写或空白）
-        const objA = parseJSON(jsonAString, false, false);
-        const objB = parseJSON(jsonBString, false, false);
-        // 获取所有字段路径（含原始字段名链路）
+
+  try {
+    const btn = document.getElementById('compareBtn');
+    const old = btn?.innerHTML; if (btn) { btn.innerHTML = '<div class="loading"></div> 比对中...'; btn.disabled = true; }
+
+    const objA = JSON.parse(jsonAString);
+    const objB = JSON.parse(jsonBString);
+
         const allPathsA = getAllFieldPathsWithOrigin(objA);
         const allPathsB = getAllFieldPathsWithOrigin(objB);
-        // 合并所有路径，保留A的原始顺序，再追加B中独有路径，仍保留其原始顺序
-        const pathMap = new Map();
-        for (const p of allPathsA) {
-            const lower = p.pathArr.map(x => x.toLowerCase()).join('.');
-            if (!pathMap.has(lower)) pathMap.set(lower, p);
-        }
-        for (const p of allPathsB) {
-            const lower = p.pathArr.map(x => x.toLowerCase()).join('.');
-            if (!pathMap.has(lower)) pathMap.set(lower, p);
-        }
-        // 生成完整的结果列表（不排序，保持插入顺序）
+
+    // 合并，保持A顺序，再补B独有
+    const map = new Map();
+    for (const p of allPathsA) { const lower = p.pathArr.map(x => x.toLowerCase()).join('.'); if (!map.has(lower)) map.set(lower, p); }
+    for (const p of allPathsB) { const lower = p.pathArr.map(x => x.toLowerCase()).join('.'); if (!map.has(lower)) map.set(lower, p); }
+
         const results = [];
-        for (const {pathArr, pathStr} of pathMap.values()) {
+    for (const { pathArr, pathStr } of map.values()) {
             if (shouldFilterField(pathStr, filterFields)) continue;
             const valueA = getFieldValueByArr(objA, pathArr);
             const valueB = getFieldValueByArr(objB, pathArr);
             const isImportant = isImportantField(pathStr, importantFields);
-            const existsInA = valueA !== undefined;
-            const existsInB = valueB !== undefined;
-            if (!existsInA) {
-                results.push({ path: pathStr, type: 'missing', valueA: undefined, valueB, important: isImportant });
-            } else if (!existsInB) {
-                results.push({ path: pathStr, type: 'missing', valueA, valueB: undefined, important: isImportant });
-            } else {
+      const existsInA = valueA !== undefined; const existsInB = valueB !== undefined;
+      if (!existsInA) results.push({ path: pathStr, type: 'missing', valueA: undefined, valueB, important: isImportant });
+      else if (!existsInB) results.push({ path: pathStr, type: 'missing', valueA, valueB: undefined, important: isImportant });
+      else {
                 let isSame;
-                if (typeof valueA === 'string' && typeof valueB === 'string') {
-                    isSame = normalizeForCompare(valueA) === normalizeForCompare(valueB);
-                } else {
-                    isSame = compareValues(valueA, valueB);
-                }
+        if (typeof valueA === 'string' && typeof valueB === 'string') isSame = normalizeForCompare(valueA) === normalizeForCompare(valueB);
+        else isSame = deepEqual(valueA, valueB);
                 results.push({ path: pathStr, type: isSame ? 'same' : 'diff', valueA, valueB, important: isImportant });
             }
         }
-        // 不排序，保持原有顺序
+
         currentResults = results;
         displayResults(results);
-        compareBtn.innerHTML = originalText;
-        compareBtn.disabled = false;
-    } catch (error) {
-        showNotification(error.message, 'error');
-        const compareBtn = document.getElementById('compareBtn');
-        compareBtn.innerHTML = '<i class="fas fa-search"></i> 开始比对';
-        compareBtn.disabled = false;
-    }
+
+    if (btn) { btn.innerHTML = old; btn.disabled = false; }
+  } catch (e) {
+    showNotification('JSON解析错误或比对异常：' + e.message, 'error');
+    const btn = document.getElementById('compareBtn'); if (btn) { btn.innerHTML = '<i class="fas fa-magnifying-glass"></i> 开始比对'; btn.disabled = false; }
+  }
 }
 
-// 显示比对结果
-function displayResults(results) {
-    const resultsDiv = document.getElementById('results');
-    const diffResultDiv = document.getElementById('diffResult');
-    
-    // 更新统计信息
-    updateStats(results);
-    
-    // 显示结果区域
-    resultsDiv.style.display = 'block';
-    
-    // 渲染结果
-    renderResults(results, 'all');
-    
-    // 滚动到结果区域
-    resultsDiv.scrollIntoView({ behavior: 'smooth' });
+// 字段列表
+function getFilterFields(){ return (document.getElementById('filterFields')?.value || '').split(',').map(s=>s.trim()).filter(Boolean); }
+function getImportantFields(){ return (document.getElementById('importantFields')?.value || '').split(',').map(s=>s.trim()).filter(Boolean); }
+
+// 过滤/重要判断（路径完全匹配或前缀匹配；大小写不敏感以提升易用性）
+function shouldFilterField(path, filters){ if (!filters.length) return false; return filters.some(f=> path===f || path.startsWith(f+'.') || path.toLowerCase()===f.toLowerCase() || path.toLowerCase().startsWith(f.toLowerCase()+'.')); }
+function isImportantField(path, importants){ if (!importants.length) return false; return importants.some(f=> path===f || path.startsWith(f+'.') || path.toLowerCase()===f.toLowerCase() || path.toLowerCase().startsWith(f.toLowerCase()+'.')); }
+
+// 路径与取值
+function getAllFieldPathsWithOrigin(obj, pathArr=[], pathStr=''){
+  const paths=[];
+  if (obj && typeof obj==='object' && !Array.isArray(obj)){
+    for (const [key,val] of Object.entries(obj)){
+      const arr=[...pathArr,key]; const str=arr.join('.');
+      if (val && typeof val==='object' && !Array.isArray(val)) paths.push(...getAllFieldPathsWithOrigin(val, arr, str));
+      else paths.push({pathArr:arr, pathStr:str});
+    }
+  }
+  return paths;
+}
+function getFieldValueByArr(obj, arr){ let cur=obj; for (const k of arr){ if (cur && typeof cur==='object' && k in cur) cur=cur[k]; else return undefined; } return cur; }
+
+// 显示结果（按模型分区，剩余字段按原顺序）
+function displayResults(results){
+  const resultsDiv = document.getElementById('results');
+  if (!results || !results.length) { if (resultsDiv) resultsDiv.style.display='none'; return; }
+  resultsDiv.style.display='block';
+  updateStats(results);
+  renderResults(results, currentFilter);
 }
 
-// 更新统计信息
-function updateStats(results) {
-    const stats = {
-        total: results.length,
-        same: results.filter(r => r.type === 'same').length,
-        diff: results.filter(r => r.type === 'diff').length,
-        missing: results.filter(r => r.type === 'missing').length
-    };
-    
-    document.getElementById('totalFields').textContent = stats.total;
-    document.getElementById('sameFields').textContent = stats.same;
-    document.getElementById('diffFields').textContent = stats.diff;
-    document.getElementById('missingFields').textContent = stats.missing;
+function updateStats(results){
+  document.getElementById('totalFields').textContent = String(results.length);
+  document.getElementById('sameFields').textContent = String(results.filter(r=>r.type==='same').length);
+  document.getElementById('diffFields').textContent = String(results.filter(r=>r.type==='diff').length);
+  document.getElementById('missingFields').textContent = String(results.filter(r=>r.type==='missing').length);
 }
 
-// 渲染结果
-function renderResults(results, filter = 'all') {
-    const diffResultDiv = document.getElementById('diffResult');
-    
-    // 过滤结果
-    let filteredResults = results;
-    if (filter !== 'all') {
-        filteredResults = results.filter(r => r.type === filter);
-    }
-    
-    if (filteredResults.length === 0) {
-        diffResultDiv.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">没有找到符合条件的字段</p>';
-        return;
-    }
-    
-    // 构建JSON样式的显示
-    const jsonStructure = {};
-    
-    // 按路径分组构建嵌套结构
-    filteredResults.forEach(result => {
-        const pathParts = result.path.split('.');
-        let current = jsonStructure;
-        
-        // 构建嵌套路径
-        for (let i = 0; i < pathParts.length - 1; i++) {
-            const part = pathParts[i];
-            if (!(part in current)) {
-                current[part] = {};
-            }
-            current = current[part];
-        }
-        
-        // 设置最终值
-        const finalPart = pathParts[pathParts.length - 1];
-        if (result.type === 'same') {
-            current[finalPart] = {
-                value: result.valueA,
-                type: 'same',
-                important: result.important
-            };
-        } else if (result.type === 'diff') {
-            current[finalPart] = {
-                valueA: result.valueA,
-                valueB: result.valueB,
-                type: 'diff',
-                important: result.important
-            };
-        } else if (result.type === 'missing') {
-            if (result.valueA !== undefined) {
-                current[finalPart] = {
-                    value: result.valueA,
-                    type: 'missing-a',
-                    important: result.important
-                };
-            } else {
-                current[finalPart] = {
-                    value: result.valueB,
-                    type: 'missing-b',
-                    important: result.important
-                };
-            }
-        }
+function renderResults(results, filter='all'){
+  const diffResultDiv = document.getElementById('diffResult');
+  let base = results;
+  if (filter!=='all') base = results.filter(r=>r.type===filter);
+
+  // 模型分区
+  const sections = [];
+  const used = new Array(base.length).fill(false);
+  for (const [modelName, prefixes] of Object.entries(currentModels)){
+    if (!Array.isArray(prefixes) || prefixes.length===0) continue;
+    const normPrefixes = prefixes.map(p=>String(p).trim()).filter(Boolean);
+    const group=[]; base.forEach((r,idx)=>{
+      if (used[idx]) return;
+      if (normPrefixes.some(p=> r.path===p || r.path.startsWith(p+'.'))) { group.push(r); used[idx]=true; }
     });
-    
-    // 渲染JSON样式
-    const html = renderJSONStructure(jsonStructure, '');
+    if (group.length) sections.push({ title: modelName, rows: group });
+  }
+  const rest = base.filter((_,idx)=>!used[idx]);
+  if (rest.length) sections.push({ title: '其余字段', rows: rest });
+
+  // 根据布局设置排序sections
+  const orderedSections = applySectionOrder(sections);
+
+  // 生成可拖拽的HTML
+  const html = orderedSections.length ? `<div class="grid-layout grid-${currentLayout.gridType}" id="gridContainer">${orderedSections.map((sec, index) => {
+    const tree = {};
+    sec.rows.forEach(r => {
+      const parts = r.path.split('.'); let node = tree;
+      for (let i=0;i<parts.length-1;i++){ node[parts[i]] = node[parts[i]] || {}; node = node[parts[i]]; }
+      const last = parts[parts.length-1];
+      if (r.type==='same') node[last] = { value: r.valueA, type:'same', important: r.important };
+      else if (r.type==='diff') node[last] = { valueA: r.valueA, valueB: r.valueB, type:'diff', important: r.important };
+      else if (r.type==='missing') node[last] = { value: r.valueA!==undefined?r.valueA:r.valueB, type: r.valueA!==undefined?'missing-a':'missing-b', important: r.important };
+    });
+    const sectionId = `section-${encodeURIComponent(sec.title)}`;
+    const savedSize = currentLayout.sectionSizes[sec.title] || {};
+    const sizeStyle = Object.entries(savedSize).map(([k,v]) => `${k}:${v}`).join(';');
+    return `<div class="draggable-section" data-section="${sec.title}" id="${sectionId}" style="${sizeStyle}">
+      <div class="section-header" draggable="true">
+        <div class="section-title">${escapeHtml(sec.title)}</div>
+        <div class="section-controls">
+          <button onclick="toggleSection('${sectionId}')" title="展开/收起" class="toggle-btn" id="toggle-${sectionId}">
+            <i class="fas fa-expand-alt"></i>
+          </button>
+        </div>
+      </div>
+      <div class="section-content">
+        <pre>${renderJSONTree(tree,'','')}</pre>
+      </div>
+      <div class="resize-handle bottom-right"></div>
+      <div class="resize-handle bottom"></div>
+      <div class="resize-handle right"></div>
+    </div>`;
+  }).join('')}</div>` : '<div style="color:#666;text-align:center;padding:12px;">没有符合条件的数据</div>';
+
     diffResultDiv.innerHTML = html;
-    // 不再调用setupFieldFullscreen
+  
+  // 初始化拖拽功能
+  if (orderedSections.length) {
+    initializeDragAndDrop();
+    initializeResizeHandles();
+  }
+  
+  // 应用字体大小设置
+  applyFontSize();
+  
+  // 渲染模型列表（保证与 currentModels 同步）
+  renderModelsList();
 }
 
-// 递归渲染JSON结构（不排序keys，保持插入顺序）
-function renderJSONStructure(obj, indent = '', parentPath = '') {
-    const lines = [];
-    const keys = Object.keys(obj); // 不排序，保持插入顺序
-    lines.push('{');
-    keys.forEach((key, index) => {
-        const value = obj[key];
-        const isLast = index === keys.length - 1;
-        const comma = isLast ? '' : ',';
-        const fullPath = parentPath ? parentPath + '.' + key : key;
-        if (typeof value === 'object' && value !== null && !value.type) {
-            const nestedContent = renderJSONStructure(value, indent + '  ', fullPath);
-            lines.push(`${indent}  "${key}": ${nestedContent}${comma}`);
+function renderJSONTree(obj, indent='', parentPath=''){
+  const lines=[]; const keys=Object.keys(obj); lines.push('{');
+  keys.forEach((key, idx) => {
+    const value = obj[key]; const isLast = idx===keys.length-1; const comma = isLast?'':','; const fullPath = parentPath? parentPath+'.'+key : key;
+    if (typeof value==='object' && value!==null && !value.type){
+      const nested = renderJSONTree(value, indent+' ', fullPath);
+      lines.push(`${indent} "${key}": ${nested}${comma}`);
         } else {
-            const fieldInfo = value;
-            const fieldClasses = ['json-field', fieldInfo.type];
-            if (fieldInfo.important) fieldClasses.push('important');
-            let fieldContent = '';
-            if (fieldInfo.type === 'same') {
-                fieldContent = `<span class="field-value">${formatJSONValue(fieldInfo.value)}</span>`;
-            } else if (fieldInfo.type === 'diff') {
-                fieldContent = `<span class="field-value value-a">${formatJSONValue(fieldInfo.valueA)}</span> <span class="diff-arrow">→</span> <span class="field-value value-b">${formatJSONValue(fieldInfo.valueB)}</span>`;
-            } else if (fieldInfo.type === 'missing-a') {
-                fieldContent = `<span class="field-value value-a">${formatJSONValue(fieldInfo.value)}</span> <span class="missing-indicator">(仅A)</span>`;
-            } else if (fieldInfo.type === 'missing-b') {
-                fieldContent = `<span class="field-value value-b">${formatJSONValue(fieldInfo.value)}</span> <span class="missing-indicator">(仅B)</span>`;
-            }
-            lines.push(`${indent}  <span class="${fieldClasses.join(' ')}">"${key}": ${fieldContent}</span>${comma}`);
-        }
-    });
-    lines.push(`${indent}}`);
-    return lines.join('\n');
+      const info = value; const classes=['json-field', info.type]; if (info.important) classes.push('important');
+      let content='';
+      if (info.type==='same') content = `<span class=\"field-value\">${formatJSONValue(info.value)}</span>`;
+      else if (info.type==='diff') content = `<span class=\"field-value value-a\">${formatJSONValue(info.valueA)}</span><span class=\"diff-arrow\">→</span><span class=\"field-value value-b\">${formatJSONValue(info.valueB)}</span>`;
+      else if (info.type==='missing-a') content = `<span class=\"field-value value-a\">${formatJSONValue(info.value)}</span><span class=\"missing-indicator\">(仅A)</span>`;
+      else if (info.type==='missing-b') content = `<span class=\"field-value value-b\">${formatJSONValue(info.value)}</span><span class=\"missing-indicator\">(仅B)</span>`;
+      lines.push(`${indent} <span class=\"${classes.join(' ')}\">\"${key}\": ${content}</span>${comma}`);
+    }
+  });
+  lines.push(`${indent}}`); return lines.join('\n');
 }
 
-// 格式化JSON值显示
-function formatJSONValue(value) {
-    if (value === undefined) {
-        return '<span class="json-null">undefined</span>';
-    }
-    if (value === null) {
-        return '<span class="json-null">null</span>';
-    }
-    if (typeof value === 'string') {
-        return `<span class="json-string">"${value}"</span>`;
-    }
-    if (typeof value === 'number') {
-        return `<span class="json-number">${value}</span>`;
-    }
-    if (typeof value === 'boolean') {
-        return `<span class="json-boolean">${value}</span>`;
-    }
-    if (Array.isArray(value)) {
-        return `<span class="json-array">[${value.map(formatJSONValue).join(', ')}]</span>`;
-    }
-    if (typeof value === 'object') {
-        return `<span class="json-object">{...}</span>`;
-    }
-    return String(value);
+function formatJSONValue(v){
+  if (v===undefined) return '<span class=\"json-null\">undefined</span>';
+  if (v===null) return '<span class=\"json-null\">null</span>';
+  if (typeof v==='string') return `\"${escapeHtml(v)}\"`;
+  if (typeof v==='number') return String(v);
+  if (typeof v==='boolean') return String(v);
+  if (Array.isArray(v)) return `[${v.map(formatJSONValue).join(', ')}]`;
+  if (typeof v==='object') return '{...}';
+  return String(v);
+}
+function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// 深比较
+function deepEqual(a,b){
+  if (typeof a!==typeof b) return false;
+  if (a===null || b===null) return a===b;
+  if (typeof a==='object'){
+    if (Array.isArray(a)!==Array.isArray(b)) return false;
+    if (Array.isArray(a)) { if (a.length!==b.length) return false; for (let i=0;i<a.length;i++){ if (!deepEqual(a[i],b[i])) return false; } return true; }
+    const ka=Object.keys(a), kb=Object.keys(b); if (ka.length!==kb.length) return false; for (const k of ka){ if (!deepEqual(a[k], b[k])) return false; } return true;
+  }
+  return a===b;
 }
 
-// 格式化值显示
-function formatValue(value) {
-    if (value === undefined) {
-        return '<em>undefined</em>';
-    }
-    if (value === null) {
-        return '<em>null</em>';
-    }
-    if (typeof value === 'string') {
-        return `"${value}"`;
-    }
-    if (typeof value === 'object') {
-        return JSON.stringify(value);
-    }
-    return String(value);
+// 通用提示
+function showNotification(message,type='info'){
+  const n=document.createElement('div'); n.textContent=message; n.style.cssText='position:fixed;top:16px;right:16px;background:#333;color:#fff;padding:8px 12px;border-radius:6px;z-index:99999'; document.body.appendChild(n); setTimeout(()=>n.remove(),1800);
 }
 
-// 切换标签页
-function switchTab(tabName) {
-    // 更新标签页状态
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
-    
-    // 更新当前过滤器
-    currentFilter = tabName;
-    
-    // 重新渲染结果
-    if (currentResults) {
-        renderResults(currentResults, tabName);
-    }
+// Tab 全屏
+function setupTabFullscreen(){
+  const content=document.querySelector('.result-content');
+  const btn=document.getElementById('tabFullscreenToggle');
+  const back=document.getElementById('tabFullscreenReturn');
+  let full=false;
+  const enter=()=>{ full=true; content?.classList.add('tab-fullscreen-mode'); document.body.classList.add('tab-fullscreen-active'); if (back) back.style.display='flex'; if (btn) btn.style.display='none'; document.body.style.overflow='hidden'; };
+  const exit =()=>{ full=false; content?.classList.remove('tab-fullscreen-mode'); document.body.classList.remove('tab-fullscreen-active'); if (back) back.style.display='none'; if (btn) btn.style.display=''; document.body.style.overflow=''; };
+  btn?.addEventListener('click', enter); back?.addEventListener('click', exit); document.addEventListener('keydown', e=>{ if (full && (e.key==='Escape'||e.key==='Esc')) exit(); });
 }
 
-// 导出结果
-function exportResults() {
-    if (!currentResults) {
-        showNotification('没有可导出的结果', 'error');
+// JSON格式化/清空按钮
+function formatJSON(textareaId){ const t=document.getElementById(textareaId); try{ const j=JSON.parse(t.value); t.value=JSON.stringify(j,null,2);}catch{ showNotification('JSON格式错误，无法格式化','error'); } }
+function clearJSON(textareaId){ const t=document.getElementById(textareaId); if (t) t.value=''; }
+
+// 导出和复制结果
+function exportResults(){
+  if (!currentResults || !currentResults.length) {
+    showNotification('没有比对结果可导出', 'error');
         return;
     }
-    
-    const exportData = {
+  const data = {
         timestamp: new Date().toISOString(),
-        filterFields: getFilterFields(),
-        importantFields: getImportantFields(),
         results: currentResults,
-        stats: {
-            total: currentResults.length,
-            same: currentResults.filter(r => r.type === 'same').length,
-            diff: currentResults.filter(r => r.type === 'diff').length,
-            missing: currentResults.filter(r => r.type === 'missing').length
-        }
-    };
-    
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    models: currentModels
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -728,97 +499,366 @@ function exportResults() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    
     showNotification('结果已导出', 'success');
 }
 
-// 复制结果
-function copyResults() {
-    if (!currentResults) {
-        showNotification('没有可复制的结果', 'error');
+function copyResults(){
+  if (!currentResults || !currentResults.length) {
+    showNotification('没有比对结果可复制', 'error');
         return;
     }
-    
-    const text = currentResults.map(result => {
-        let line = `${result.path}: `;
-        if (result.type === 'same') {
-            line += `相同 - ${formatValue(result.valueA)}`;
-        } else if (result.type === 'diff') {
-            line += `不同 - A: ${formatValue(result.valueA)}, B: ${formatValue(result.valueB)}`;
-        } else if (result.type === 'missing') {
-            if (result.valueA !== undefined) {
-                line += `仅在A中存在 - ${formatValue(result.valueA)}`;
-            } else {
-                line += `仅在B中存在 - ${formatValue(result.valueB)}`;
-            }
-        }
-        if (result.important) {
-            line += ' [重要]';
-        }
-        return line;
+  const text = currentResults.map(r => {
+    if (r.type === 'same') return `${r.path}: ${JSON.stringify(r.valueA)} (相同)`;
+    if (r.type === 'diff') return `${r.path}: ${JSON.stringify(r.valueA)} → ${JSON.stringify(r.valueB)} (不同)`;
+    if (r.type === 'missing') return `${r.path}: ${r.valueA !== undefined ? JSON.stringify(r.valueA) + ' (仅A)' : JSON.stringify(r.valueB) + ' (仅B)'}`;
+    return `${r.path}: ${r.type}`;
     }).join('\n');
     
     navigator.clipboard.writeText(text).then(() => {
         showNotification('结果已复制到剪贴板', 'success');
     }).catch(() => {
-        showNotification('复制失败', 'error');
-    });
+    showNotification('复制失败，请手动选择文本', 'error');
+  });
 }
 
-// 显示通知
-function showNotification(message, type = 'info') {
-    // 创建通知元素
-    const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
-    notification.textContent = message;
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        padding: 12px 20px;
-        border-radius: 8px;
-        color: white;
-        font-weight: 600;
-        z-index: 1000;
-        animation: slideIn 0.3s ease-out;
-        max-width: 300px;
-        word-wrap: break-word;
-    `;
+// 加载示例数据
+function loadExampleData(){
+  const jsonAEl = document.getElementById('jsonA');
+  const jsonBEl = document.getElementById('jsonB');
+  
+  // 只在首次访问且输入框为空时加载示例
+  if (jsonAEl && jsonBEl && !jsonAEl.value.trim() && !jsonBEl.value.trim()) {
+    const exampleA = {
+      "user": {
+        "id": "12345",
+        "profile": {
+          "name": "张三",
+          "email": "zhangsan@example.com",
+          "age": 28
+        },
+        "preferences": {
+          "theme": "dark",
+          "language": "zh-CN"
+        }
+      },
+      "order": {
+        "id": "order_001",
+        "total": 199.99,
+        "status": "completed"
+      },
+      "metadata": {
+        "created_at": "2024-01-15T10:30:00Z",
+        "version": "1.0"
+      }
+    };
+
+    const exampleB = {
+      "user": {
+        "id": "12345",
+        "profile": {
+          "name": "张三丰", // 修改了名字
+          "email": "zhangsan@example.com",
+          "age": 29 // 修改了年龄
+        },
+        "preferences": {
+          "theme": "light", // 修改了主题
+          "language": "zh-CN"
+        }
+      },
+      "order": {
+        "id": "order_001",
+        "total": 299.99, // 修改了金额
+        "status": "completed",
+        "shipping": "express" // 新增字段
+      },
+      "metadata": {
+        "created_at": "2024-01-15T10:30:00Z",
+        "version": "2.0" // 修改了版本
+      }
+    };
+
+    jsonAEl.value = JSON.stringify(exampleA, null, 2);
+    jsonBEl.value = JSON.stringify(exampleB, null, 2);
     
-    // 设置背景色
-    if (type === 'error') {
-        notification.style.backgroundColor = '#dc3545';
-    } else if (type === 'success') {
-        notification.style.backgroundColor = '#28a745';
+    // 如果没有保存的模型设置，提供一个示例模型
+    if (Object.keys(currentModels).length === 0) {
+      currentModels = {
+        "用户信息": ["user.id", "user.profile"],
+        "订单信息": ["order"]
+      };
+      saveToStorage(STORAGE_KEYS.models, currentModels);
+      renderModelsList();
+    }
+  }
+}
+
+// ==================== 布局和拖拽功能 ====================
+
+// 根据保存的顺序排列sections
+function applySectionOrder(sections) {
+  if (!currentLayout.sectionOrder.length) return sections;
+  
+  const ordered = [];
+  const sectionMap = new Map(sections.map(s => [s.title, s]));
+  
+  // 按保存的顺序添加
+  for (const title of currentLayout.sectionOrder) {
+    if (sectionMap.has(title)) {
+      ordered.push(sectionMap.get(title));
+      sectionMap.delete(title);
+    }
+  }
+  
+  // 添加新的sections
+  ordered.push(...sectionMap.values());
+  return ordered;
+}
+
+// 设置网格布局
+function setGridLayout(type) {
+  currentLayout.gridType = type;
+  const container = document.getElementById('gridContainer');
+  if (container) {
+    container.className = `grid-layout grid-${type}`;
+  }
+  saveToStorage(STORAGE_KEYS.layout, currentLayout);
+  showNotification(`已切换到${getLayoutName(type)}布局`, 'info');
+}
+
+function getLayoutName(type) {
+  const names = { 'auto': '自动', '1-col': '单列', '2-col': '双列', '3-col': '三列' };
+  return names[type] || type;
+}
+
+// 重置布局
+function resetLayout() {
+  currentLayout = { gridType: 'auto', sectionOrder: [], sectionSizes: {} };
+  saveToStorage(STORAGE_KEYS.layout, currentLayout);
+  if (currentResults) renderResults(currentResults, currentFilter);
+  showNotification('布局已重置', 'success');
+}
+
+// 保存当前布局
+function saveLayout() {
+  // 保存当前section顺序
+  const container = document.getElementById('gridContainer');
+  if (container) {
+    const sections = Array.from(container.querySelectorAll('.draggable-section'));
+    currentLayout.sectionOrder = sections.map(el => el.dataset.section);
+  }
+  
+  saveToStorage(STORAGE_KEYS.layout, currentLayout);
+  showNotification('布局已保存', 'success');
+}
+
+// 初始化拖拽功能
+function initializeDragAndDrop() {
+  const container = document.getElementById('gridContainer');
+  if (!container) return;
+  
+  let draggedElement = null;
+  
+  container.addEventListener('dragstart', (e) => {
+    // 确保e.target存在且是元素节点
+    if (!e.target || typeof e.target.closest !== 'function') {
+      e.preventDefault();
+      return;
+    }
+    
+    // 只有从section-header开始的拖拽才被允许
+    const headerElement = e.target.closest('.section-header');
+    const sectionElement = e.target.closest('.draggable-section');
+    
+    if (headerElement && sectionElement) {
+      draggedElement = sectionElement;
+      draggedElement.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
     } else {
-        notification.style.backgroundColor = '#17a2b8';
+      // 阻止其他区域的拖拽
+      e.preventDefault();
     }
+  });
+  
+  container.addEventListener('dragend', (e) => {
+    // 确保e.target存在且有classList属性
+    if (e.target && e.target.classList && e.target.classList.contains('draggable-section')) {
+      e.target.classList.remove('dragging');
+    }
+    // 无论如何都清理draggedElement
+    if (draggedElement) {
+      draggedElement.classList.remove('dragging');
+      draggedElement = null;
+    }
+  });
+  
+  container.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  });
+  
+  container.addEventListener('drop', (e) => {
+    e.preventDefault();
+    if (!draggedElement) return;
     
-    // 添加到页面
-    document.body.appendChild(notification);
+    // 确保e.target存在且支持closest方法
+    if (!e.target || typeof e.target.closest !== 'function') return;
     
-    // 3秒后自动移除
-    setTimeout(() => {
-        notification.style.animation = 'slideOut 0.3s ease-in';
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.parentNode.removeChild(notification);
-            }
-        }, 300);
-    }, 3000);
+    const dropTarget = e.target.closest('.draggable-section');
+    if (dropTarget && dropTarget !== draggedElement) {
+      const containerEl = dropTarget.parentNode;
+      const allSections = Array.from(containerEl.children);
+      const draggedIndex = allSections.indexOf(draggedElement);
+      const targetIndex = allSections.indexOf(dropTarget);
+      
+      if (draggedIndex < targetIndex) {
+        containerEl.insertBefore(draggedElement, dropTarget.nextSibling);
+      } else {
+        containerEl.insertBefore(draggedElement, dropTarget);
+      }
+      
+      // 更新section顺序
+      currentLayout.sectionOrder = Array.from(containerEl.querySelectorAll('.draggable-section'))
+        .map(el => el.dataset.section);
+      saveToStorage(STORAGE_KEYS.layout, currentLayout);
+      showNotification('模块顺序已调整', 'info');
+    }
+  });
 }
 
-// 添加CSS动画
-const style = document.createElement('style');
-style.textContent = `
-    @keyframes slideIn {
-        from { transform: translateX(100%); opacity: 0; }
-        to { transform: translateX(0); opacity: 1; }
+// 初始化调整大小功能
+function initializeResizeHandles() {
+  const container = document.getElementById('gridContainer');
+  if (!container) return;
+  
+  let isResizing = false;
+  let currentSection = null;
+  let startX = 0;
+  let startY = 0;
+  let startWidth = 0;
+  let startHeight = 0;
+  
+  container.addEventListener('mousedown', (e) => {
+    if (e.target.classList.contains('resize-handle')) {
+      isResizing = true;
+      currentSection = e.target.closest('.draggable-section');
+      startX = e.clientX;
+      startY = e.clientY;
+      
+      const rect = currentSection.getBoundingClientRect();
+      startWidth = rect.width;
+      startHeight = rect.height;
+      
+      e.preventDefault();
+      document.body.style.cursor = e.target.style.cursor;
+    }
+  });
+  
+  document.addEventListener('mousemove', (e) => {
+    if (!isResizing || !currentSection) return;
+    
+    const deltaX = e.clientX - startX;
+    const deltaY = e.clientY - startY;
+    
+    const newWidth = Math.max(200, startWidth + deltaX);
+    const newHeight = Math.max(150, startHeight + deltaY);
+    
+    currentSection.style.width = newWidth + 'px';
+    currentSection.style.height = newHeight + 'px';
+    currentSection.style.minWidth = 'auto';
+    currentSection.style.minHeight = 'auto';
+  });
+  
+  document.addEventListener('mouseup', () => {
+    if (isResizing && currentSection) {
+      // 保存大小设置
+      const sectionTitle = currentSection.dataset.section;
+      currentLayout.sectionSizes[sectionTitle] = {
+        width: currentSection.style.width,
+        height: currentSection.style.height,
+        'min-width': 'auto',
+        'min-height': 'auto'
+      };
+      saveToStorage(STORAGE_KEYS.layout, currentLayout);
     }
     
-    @keyframes slideOut {
-        from { transform: translateX(0); opacity: 1; }
-        to { transform: translateX(100%); opacity: 0; }
+    isResizing = false;
+    currentSection = null;
+    document.body.style.cursor = '';
+  });
+}
+
+// 展开/收起section
+function toggleSection(sectionId) {
+  const section = document.getElementById(sectionId);
+  const toggleBtn = document.getElementById(`toggle-${sectionId}`);
+  
+  if (!section || !toggleBtn) return;
+  
+  const content = section.querySelector('.section-content');
+  const icon = toggleBtn.querySelector('i');
+  
+  // 检查当前状态
+  const isExpanded = section.classList.contains('expanded');
+  
+  if (isExpanded) {
+    // 收起 - 设置容器最小高度
+    section.style.minHeight = '200px';
+    section.style.height = '';
+    icon.className = 'fas fa-expand-alt';
+    toggleBtn.title = '展开';
+    section.classList.remove('expanded');
+  } else {
+    // 展开 - 移除高度限制，让内容完全展示
+    section.style.minHeight = 'auto';
+    section.style.height = 'auto';
+    icon.className = 'fas fa-compress-alt';
+    toggleBtn.title = '收起';
+    section.classList.add('expanded');
+  }
+}
+
+// ==================== 字体大小控制 ====================
+
+// 调整字体大小
+function adjustFontSize(delta) {
+  const newSize = Math.max(10, Math.min(16, currentFontSize + delta));
+  if (newSize !== currentFontSize) {
+    currentFontSize = newSize;
+    saveToStorage(STORAGE_KEYS.fontSize, currentFontSize);
+    applyFontSize();
+    updateFontSizeDisplay();
+    showNotification(`字体大小已调整为 ${currentFontSize}px`, 'info');
+  }
+}
+
+// 重置字体大小
+function resetFontSize() {
+  currentFontSize = 12;
+  saveToStorage(STORAGE_KEYS.fontSize, currentFontSize);
+  applyFontSize();
+  updateFontSizeDisplay();
+  showNotification('字体大小已重置', 'success');
+}
+
+// 应用字体大小
+function applyFontSize() {
+  const container = document.getElementById('diffResult');
+  if (container) {
+    // 移除所有字体大小类
+    for (let i = 10; i <= 16; i++) {
+      container.classList.remove(`font-size-${i}`);
     }
-`;
-document.head.appendChild(style); 
+    // 添加当前字体大小类
+    container.classList.add(`font-size-${currentFontSize}`);
+  }
+}
+
+// 更新字体大小显示
+function updateFontSizeDisplay() {
+  const display = document.getElementById('fontSizeDisplay');
+  if (display) {
+    display.textContent = currentFontSize;
+  }
+}
+
+
