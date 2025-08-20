@@ -51,45 +51,26 @@
       </div>
     </details>
 
-    <!-- 模型编辑弹窗 -->
-    <div id="modelModal" class="modal" style="display:none;">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h4 id="modalTitle">编辑模型</h4>
-          <button class="modal-close" id="modalClose" title="关闭">&times;</button>
-        </div>
-        <div class="modal-body">
-          <div class="control-group">
-            <label for="modalModelName">模型名称</label>
-            <input id="modalModelName" type="text" placeholder="例如：核心信息" />
-          </div>
-          <div class="control-group">
-            <label for="modalModelPaths">路径前缀（逗号或换行分隔）</label>
-            <textarea id="modalModelPaths" placeholder="例如：user.profile, user.id"></textarea>
+    <div class="json-inputs" id="jsonInputs">
+      <div class="panel-header">
+        <h2>源数据 <button id="toggleJsonInputs" class="toggle-button" title="折叠/展开"><i class="fas fa-chevron-up"></i></button></h2>
+      </div>
+      <div class="json-panels">
+        <div class="json-panel">
+          <h3>JSON A</h3>
+          <textarea id="jsonA" placeholder="请输入第一个JSON对象..."></textarea>
+          <div class="panel-actions">
+            <button class="btn-secondary" onclick="formatJSON('jsonA')"><i class="fas fa-indent"></i> 格式化</button>
+            <button class="btn-secondary" onclick="clearJSON('jsonA')"><i class="fas fa-trash"></i> 清空</button>
           </div>
         </div>
-        <div class="modal-footer">
-          <button id="modalCancel" class="btn-secondary">取消</button>
-          <button id="modalSave" class="btn-primary">保存</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="json-inputs">
-      <div class="json-panel">
-        <h3>JSON A</h3>
-        <textarea id="jsonA" placeholder="请输入第一个JSON对象..."></textarea>
-        <div class="panel-actions">
-          <button class="btn-secondary" onclick="formatJSON('jsonA')"><i class="fas fa-indent"></i> 格式化</button>
-          <button class="btn-secondary" onclick="clearJSON('jsonA')"><i class="fas fa-trash"></i> 清空</button>
-        </div>
-      </div>
-      <div class="json-panel">
-        <h3>JSON B</h3>
-        <textarea id="jsonB" placeholder="请输入第二个JSON对象..."></textarea>
-        <div class="panel-actions">
-          <button class="btn-secondary" onclick="formatJSON('jsonB')"><i class="fas fa-indent"></i> 格式化</button>
-          <button class="btn-secondary" onclick="clearJSON('jsonB')"><i class="fas fa-trash"></i> 清空</button>
+        <div class="json-panel">
+          <h3>JSON B</h3>
+          <textarea id="jsonB" placeholder="请输入第二个JSON对象..."></textarea>
+          <div class="panel-actions">
+            <button class="btn-secondary" onclick="formatJSON('jsonB')"><i class="fas fa-indent"></i> 格式化</button>
+            <button class="btn-secondary" onclick="clearJSON('jsonB')"><i class="fas fa-trash"></i> 清空</button>
+          </div>
         </div>
       </div>
     </div>
@@ -144,6 +125,33 @@
   </div>
 
   <script src="script.js?v=3.4"></script>
+  
+  <!-- 模型编辑模态框 -->
+  <div id="modelModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h4 id="modalTitle">新增模型</h4>
+        <button id="modalClose" class="modal-close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div>
+          <label for="modalModelName">模型名称</label>
+          <input type="text" id="modalModelName" class="control-input" placeholder="例如：用户信息">
+        </div>
+        <div>
+          <label for="modalModelPaths">匹配路径（每行一个）</label>
+          <textarea id="modalModelPaths" class="control-textarea" placeholder="例如：
+user
+user.name
+user.email"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="modalCancel" class="btn-secondary">取消</button>
+        <button id="modalSave" class="btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>
 

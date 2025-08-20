@@ -28,9 +28,23 @@ header p{font-size:13px;color:#666}
 .models-right ul{padding-left:18px}
 .models-right li{margin:4px 0;color:#555;font-size:13px}
 
-.json-inputs{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
-.json-panel{background:#fff;border:1px solid #e6e9ee;border-radius:8px;overflow:hidden}
-.json-panel h3{padding:10px 12px;background:#667eea;color:#fff;font-size:14px}
+.json-inputs{background:#fff;border:1px solid #e6e9ee;border-radius:8px;margin-bottom:12px;transition:all 0.3s ease}
+.json-inputs.collapsed{margin-bottom:12px}
+.panel-header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#667eea;color:#fff;font-size:14px}
+.toggle-button{background:none;border:none;color:#fff;cursor:pointer;font-size:16px}
+.json-inputs.collapsed .json-panels{display:none}
+.json-inputs.collapsed .panel-header button i{transform:rotate(180deg)}
+.json-inputs.collapsed .panel-header{border-bottom:none}
+
+.json-inputs .json-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 0 12px 12px 12px;
+}
+
+.json-panel{background:#fff;border:1px solid #e6e9ee;border-radius:8px;overflow:hidden;margin-top:0}
+.json-panel h3{padding:10px 12px;background:#667eea;color:#fff;font-size:14px;margin:0}
 .json-panel textarea{width:100%;min-height:240px;border:none;padding:12px;background:#fbfcfe;font-family:Monaco,Menlo,Ubuntu Mono,monospace;font-size:12px}
 .panel-actions{padding:10px 12px;border-top:1px solid #e6e9ee;display:flex;gap:8px;background:#fafbfc}
 
@@ -134,7 +148,26 @@ body.tab-fullscreen-active #tabFullscreenToggle{display:none!important}
 
 @media (max-width: 900px){
   .models-body{grid-template-columns:1fr}
-  .json-inputs{grid-template-columns:1fr}
+  .json-inputs .json-panels{grid-template-columns:1fr}
 }
 
+/* 添加控制样式 */
+.control-input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d6d9de;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-top: 4px;
+}
 
+.control-textarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 8px 10px;
+  border: 1px solid #d6d9de;
+  border-radius: 6px;
+  font-family: Monaco, Menlo, Ubuntu Mono, monospace;
+  font-size: 12px;
+  margin-top: 4px;
+}

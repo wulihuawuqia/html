@@ -13,9 +13,10 @@ const STORAGE_KEYS = {
 
 let currentResults = null; // 比对后的扁平结果（保持顺序）
 let currentFilter = 'all';
-let currentModels = {}; // { 模型名: [前缀路径, ...] }
+let currentModels = {}; // { 模型名屏前缀路径, ...] }
 let currentLayout = { gridType: 'auto', sectionOrder: [], sectionSizes: {} }; // 布局设置
 let currentFontSize = 12; // 当前字体大小
+let isJsonInputsCollapsed = false; // JSON输入区域是否折叠
 
 // 工具：localStorage
 function saveToStorage(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {} }
@@ -65,7 +66,7 @@ function persistControlsToStorage() {
   });
 }
 
-// 解析模型：支持JSON对象或“模型名: 路径1, 路径2”
+// 解析模型：支持JSON对象或"模型名: 路径1, 路径2"
 function parseModels(inputText) {
   let text = (inputText || '').trim();
   if (!text) return {};
@@ -129,8 +130,56 @@ function initializeEventListeners() {
   const debounced = debounce(compareJSON, 400);
   document.getElementById('jsonA')?.addEventListener('input', debounced);
   document.getElementById('jsonB')?.addEventListener('input', debounced);
+  
+  // 添加对jsonB输入的监听，仅在jsonB改变时折叠输入区域
+  document.getElementById('jsonB')?.addEventListener('input', function() {
+    // 只有在输入有效JSON且结果已经显示时才自动折叠
+    try {
+      if (this.value.trim() && JSON.parse(this.value)) {
+        if (!isJsonInputsCollapsed) {
+          toggleJsonInputs();
+        }
+      }
+    } catch(e) {
+      // 如果不是有效的JSON，不执行折叠
+    }
+  });
+  
   // Tab 全屏
   setupTabFullscreen();
+  
+  // 添加折叠功能
+  setupCollapseFeature();
+}
+
+// 设置折叠功能
+function setupCollapseFeature() {
+  const toggleButton = document.getElementById('toggleJsonInputs');
+  const jsonInputs = document.getElementById('jsonInputs');
+  
+  if (toggleButton && jsonInputs) {
+    toggleButton.addEventListener('click', function() {
+      toggleJsonInputs();
+    });
+  }
+}
+
+// 切换JSON输入区域的折叠状态
+function toggleJsonInputs() {
+  const jsonInputs = document.getElementById('jsonInputs');
+  const toggleButton = document.getElementById('toggleJsonInputs');
+  const icon = toggleButton.querySelector('i');
+  
+  if (jsonInputs) {
+    jsonInputs.classList.toggle('collapsed');
+    isJsonInputsCollapsed = jsonInputs.classList.contains('collapsed');
+    
+    if (isJsonInputsCollapsed) {
+      if (icon) icon.className = 'fas fa-chevron-down';
+    } else {
+      if (icon) icon.className = 'fas fa-chevron-up';
+    }
+  }
 }
 
 // 渲染模型列表
@@ -860,5 +909,3 @@ function updateFontSizeDisplay() {
     display.textContent = currentFontSize;
   }
 }
-
-
