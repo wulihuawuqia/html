@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JSON预览工具 - 在线JSON查看器</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-file-code"></i> JSON预览工具</h1>
+            <p>在线JSON格式化和查看工具，支持折叠/展开、搜索、复制等功能</p>
+        </header>
+
+        <div class="main-content">
+            <div class="input-section">
+                <div class="toolbar">
+                    <h2>输入JSON</h2>
+                    <div class="toolbar-buttons">
+                        <button id="formatBtn" class="btn-primary"><i class="fas fa-indent"></i> 格式化</button>
+                        <button id="clearBtn" class="btn-secondary"><i class="fas fa-trash"></i> 清空</button>
+                        <button id="sampleBtn" class="btn-secondary"><i class="fas fa-magic"></i> 示例</button>
+                    </div>
+                </div>
+                <textarea id="jsonInput" placeholder='请输入JSON字符串，例如：
+{
+  "name": "张三",
+  "age": 25,
+  "skills": ["JavaScript", "Python", "Java"]
+}'></textarea>
+            </div>
+
+            <div class="preview-section">
+                <div class="toolbar">
+                    <h2>预览结果</h2>
+                    <div class="toolbar-buttons">
+                        <button id="expandAllBtn" class="btn-secondary"><i class="fas fa-expand"></i> 全部展开</button>
+                        <button id="collapseAllBtn" class="btn-secondary"><i class="fas fa-compress"></i> 全部折叠</button>
+                        <button id="copyBtn" class="btn-primary"><i class="fas fa-copy"></i> 复制</button>
+                    </div>
+                </div>
+                <div id="jsonPreview" class="json-preview"></div>
+                <div id="notification" class="notification"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
