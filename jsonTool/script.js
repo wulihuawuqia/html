@@ -340,7 +340,14 @@ function compareJSON() {
       else if (!existsInB) results.push({ path: pathStr, type: 'missing', valueA, valueB: undefined, important: isImportant });
       else {
                 let isSame;
-        if (typeof valueA === 'string' && typeof valueB === 'string') isSame = normalizeForCompare(valueA) === normalizeForCompare(valueB);
+        if (typeof valueA === 'string' && typeof valueB === 'string') {
+          // 如果两个字符串都是数字，则比较数值
+          if (isNumericValue(valueA) && isNumericValue(valueB)) {
+            isSame = parseFloat(valueA) === parseFloat(valueB);
+          } else {
+            isSame = normalizeForCompare(valueA) === normalizeForCompare(valueB);
+          }
+        }
         else isSame = deepEqual(valueA, valueB);
                 results.push({ path: pathStr, type: isSame ? 'same' : 'diff', valueA, valueB, important: isImportant });
             }
@@ -498,14 +505,49 @@ function escapeHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt
 
 // 深比较
 function deepEqual(a,b){
-  if (typeof a!==typeof b) return false;
+  if (typeof a!==typeof b) {
+    // 如果类型不同，检查是否都可以转换为数字并且数值相等
+    if (isNumericValue(a) && isNumericValue(b)) {
+      return parseFloat(a) === parseFloat(b);
+    }
+    return false;
+  }
   if (a===null || b===null) return a===b;
   if (typeof a==='object'){
     if (Array.isArray(a)!==Array.isArray(b)) return false;
     if (Array.isArray(a)) { if (a.length!==b.length) return false; for (let i=0;i<a.length;i++){ if (!deepEqual(a[i],b[i])) return false; } return true; }
     const ka=Object.keys(a), kb=Object.keys(b); if (ka.length!==kb.length) return false; for (const k of ka){ if (!deepEqual(a[k], b[k])) return false; } return true;
   }
+  // 对于字符串和数字，检查是否可以转换为数字并且数值相等
+  if (isNumericValue(a) && isNumericValue(b)) {
+    return parseFloat(a) === parseFloat(b);
+  }
   return a===b;
+}
+
+// 检查是否为数字值（数字或数字字符串）
+function isNumericValue(value) {
+  // 直接是数字
+  if (typeof value === 'number') return isFinite(value);
+  
+  // 检查是否为字符串并且可以转换为有效数字
+  if (typeof value === 'string') {
+    // 空字符串不是数字
+    if (value === '') return false;
+    
+    // 使用parseFloat检查是否可以解析为数字
+    const parsed = parseFloat(value);
+    
+    // 检查是否能解析为数字，并且整个字符串都是有效数字（不是部分匹配）
+    // 同时确保解析后的数字转换为字符串等于原字符串（严格的数字字符串）
+    // 或者是科学计数法表示的数字
+    return !isNaN(parsed) && 
+           isFinite(parsed) && 
+           (parsed.toString() === value || 
+            Number(value).toString() === parsed.toString());
+  }
+  
+  return false;
 }
 
 // 通用提示

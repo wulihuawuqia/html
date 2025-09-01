@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>测试数字比较功能</title>
+</head>
+<body>
+    <h1>测试数字比较功能</h1>
+    <p>请在JSON对比工具中使用以下两个JSON对象来测试数字比较功能：</p>
+    
+    <h2>JSON A</h2>
+    <pre>
+{
+  "number": 1,
+  "string_number": "1",
+  "float": 1.5,
+  "string_float": "1.5",
+  "zero": 0,
+  "string_zero": "0",
+  "negative": -1,
+  "string_negative": "-1",
+  "scientific": 1e2,
+  "string_scientific": "1e2"
+}
+</pre>
+    
+    <h2>JSON B</h2>
+    <pre>
+{
+  "number": 1.0,
+  "string_number": "1.0",
+  "float": 1.50,
+  "string_float": "1.50",
+  "zero": 0.0,
+  "string_zero": "0.0",
+  "negative": -1.0,
+  "string_negative": "-1.0",
+  "scientific": 100,
+  "string_scientific": "100"
+}
+</pre>
+    
+    <p>根据我们的修改，这些字段应该被认为是相同的，因为它们在数值上相等。</p>
+</body>
+</html>
