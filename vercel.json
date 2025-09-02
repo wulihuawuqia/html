@@ -1,23 +1,39 @@
 {
   "version": 2,
+  "builds": [
+    {
+      "src": "index.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "jsonViewer/**",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "jsonTool/**",
+      "use": "@vercel/static"
+    }
+  ],
   "routes": [
     {
       "src": "/$",
       "dest": "/index.html"
     },
     {
-      "src": "/jsonViewer$",
-      "status": 301,
-      "headers": {
-        "Location": "/jsonViewer/"
-      }
+      "src": "/jsonViewer/?$",
+      "dest": "/jsonViewer/index.html"
     },
     {
-      "src": "/jsonTool$",
-      "status": 301,
-      "headers": {
-        "Location": "/jsonTool/"
-      }
+      "src": "/jsonTool/?$",
+      "dest": "/jsonTool/index.html"
+    },
+    {
+      "src": "/jsonViewer/(.*)$",
+      "dest": "/jsonViewer/$1"
+    },
+    {
+      "src": "/jsonTool/(.*)$",
+      "dest": "/jsonTool/$1"
     }
   ]
 }
