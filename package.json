@@ -1,0 +1,16 @@
+{
+  "name": "json-tools",
+  "version": "1.0.0",
+  "description": "A set of JSON tools including JSON viewer and JSON diff tool",
+  "scripts": {
+    "build": "echo 'No build required for static site'"
+  },
+  "keywords": [
+    "json",
+    "viewer",
+    "diff",
+    "compare"
+  ],
+  "author": "Developer",
+  "license": "MIT"
+}
